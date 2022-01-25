@@ -10,6 +10,50 @@ from utils.utils import MerkleTree
 from utils.constants import DIFFICULTY
 from Crypto.Hash import SHA256
 
+"""
+{'id': 0, 
+'prev_block_hash': '452cbf687d85b5f0cd587be9bb157cf58fb43d97a3aeef255eecdad173d799a7', 
+'merkle_root': '98a861ec4983e3562f38168b276e0edf63afcbb2503ace3a5a226c0de2048a4b', 
+'nonce': 0, 'difficulty': 3, 
+'timestamp': 1642936299.39131, 
+'block_hash': '0a1bd5d6a31f8597b396f2d5ec5f782016fdca52b05befb27146a64c3470eabd', 
+'tx_list': [
+            {'id': 0, 
+           'txin_list': [
+                        {'last_tx_id': 13, 
+                        'last_txout_idx': 0, 
+                        'script_sig': '12345\t54321'}, 
+                        {'last_tx_id': 12, 
+                        'last_txout_idx': 1, 
+                        'script_sig': ''}
+                        ], 
+           'txout_list': [
+                        {'value': 100, 
+                         'script_pubkey': 'OP_DUP\tOP_HASH160\t123\tOP_EQUALVERIFY\tOP_CHECKSIG'}, 
+                        {'value': 200, 
+                         'script_pubkey': 'OP_DUP\tOP_HASH160\t234\tOP_EQUALVERIFY\tOP_CHECKSIG'}
+                        ]
+            }, 
+            {'id': 0, 
+            'txin_list': [
+                        {'last_tx_id': 13, 
+                        'last_txout_idx': 0, 
+                        'script_sig': '12345\t54321'}, 
+                        {'last_tx_id': 12, 
+                        'last_txout_idx': 1, 
+                        'script_sig': ''}
+                        ], 
+            'txout_list': [
+                        {'value': 100, 
+                        'script_pubkey': 'OP_DUP\tOP_HASH160\t123\tOP_EQUALVERIFY\tOP_CHECKSIG'}, 
+                        {'value': 200, 
+                        'script_pubkey': 'OP_DUP\tOP_HASH160\t234\tOP_EQUALVERIFY\tOP_CHECKSIG'}
+                        ]
+            }
+            ]
+}
+"""
+
 class BlockHeader:
     def __init__(self, 
                 previous_block_hash, 
@@ -44,10 +88,10 @@ class Block:
                 nonce, 
                 difficulty, 
                 previous_block = None,
-                index = None, 
+                id = None, 
                 timestamp = time()): 
 
-        self.index = index
+        self.id = id
         self.header = BlockHeader(previous_block_hash = previous_block_hash,
                                 merkle_root = self.get_merkle_root(tx_list),
                                 nonce = nonce, 
@@ -90,15 +134,15 @@ if __name__ == "__main__":
                         previous_block_hash = "",
                         nonce = 0,
                         difficulty=DIFFICULTY,
-                        index = 0,
+                        id = 0,
                         timestamp = time())
 
     b1 = Block(tx_list = [tx, tx],
                 previous_block_hash = genesis_block.header.block_hash,
                 nonce = 0,
                 difficulty = DIFFICULTY,
-                index = 0,
+                id = 0,
                 timestamp = time())
 
     print(b1.header.block_hash)
-    print(b1.tx_list)
+    print(b1.to_dict())

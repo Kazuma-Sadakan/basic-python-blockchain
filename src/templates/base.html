@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <h1>hello</h1>
+    {% block content %} {% endblock %}
+    <form id="tx-form">
+        <div class="form-group">
+            <div id="tx-ins">
+
+            </div>
+            <input type="button" value="create" id="txin-form-create">
+        </div>
+        <div class="form-group">
+            <div id="tx-outs">
+
+            </div>
+            <input type="button" value="create" id="txout-form-create">
+        </div>
+        <input type="submit" value="submit" id="tx-submit">
+        
+    </form>
+    <script src="{{url_for('static', 'js/index.js')}}" type="module"></script>
+</body>
+</html>

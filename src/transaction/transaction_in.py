@@ -1,28 +1,28 @@
 import json
-from copy import deepcopy
-
+"""
+{"tx_hash": 13, 
+"tx_output_n": 0, 
+"script_sig": {
+    "hex": "<signature>\t<public_key>"
+    }
+}
+"""
 
 class TransactionInput:
-    def __init__(self, last_tx_id, last_txout_idx, script_sig=None):
-        self.last_tx_id = last_tx_id
-        self.last_txout_idx = last_txout_idx
-        self.script_sig = script_sig 
+    def __init__(self, tx_hash, tx_output_n, signature="", pub_key=""):
+        self.tx_hash = tx_hash
+        self.tx_output_n = tx_output_n
+        self.script_sig = f"{signature}\t{pub_key}" if not (signature == "" and pub_key == "") else ""
 
     def to_dict(self):
-        return deepcopy(self.__dict__)
+        return {
+            "tx_hash": self.tx_hash,
+            "tx_output_n": self.tx_output_n,
+            "script_sig": {
+                "hex": self.script_sig,
+            }
+        }
 
     def to_json(self):
-        return json.dumps(self.__dict__)
+        return json.dumps(self.to_dict())
 
-    def set_script_sig(self, signature, pub_key):
-        self.script_sig = f"{signature}\t{pub_key}"
-        
-
-if __name__ == "__main__":
-    txin_1 = {"last_tx_id": 13, "last_txout_idx": 0}
-    txin_2 = {"last_tx_id": 12, "last_txout_idx": 1}
-    txin_1 = TransactionInput(**txin_1)
-    txin_2 = TransactionInput(**txin_2)
-    script_sig = {"signature": "12345", "pub_key": "54321"}
-    txin_1.set_script_sig(**script_sig)
-    print(txin_1.to_json())

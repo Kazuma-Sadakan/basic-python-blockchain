@@ -1,4 +1,5 @@
 import binascii
+from copy import deepcopy
 import json
 import os 
 import base64
@@ -12,7 +13,7 @@ import Crypto.Random
 """
     private_key => (ECDSA) => public_key =>
     (RIPEMD160(SHA256)) => raw_wallet_addres => 
-    (BASE58CHECK) => wallet_address
+    (BASE58CHECK)or(BASE64CHECK) => wallet_address
 """
 
 class Wallet:
@@ -32,6 +33,9 @@ class Wallet:
 
         self.wallet_id = wallet_id
 
+    def get(self):
+        return deepcopy({"private_key": self.private_key, "public_key": self.public_key, "address": self.address})
+
     @staticmethod
     def hash160(public_key):
         return RIPEMD160.new(SHA256.new(binascii.unhexlify(public_key)).digest()).hexdigest()
@@ -50,29 +54,18 @@ class Wallet:
         return binascii.hexlify(base64.b64decode(address.encode("utf-8"))).decode("utf-8")
 
     @staticmethod
-    def generate_signature(sender, data):
-        key = DSA.import_key(binascii.unhexlify(sender))
-        data_ = SHA256.new(data.encode('utf-8'))
+    def generate_signature(private_key, data, public_key):
+        key = DSA.import_key(binascii.unhexlify(private_key))
+        hash = SHA256.new(f"{data}\t{public_key}".encode('utf-8'))
         signer = DSS.new(key, mode = 'fips-186-3')
-        return binascii.hexlify(signer.sign(data_)).decode("utf-8")
+        return binascii.hexlify(signer.sign(hash)).decode("utf-8")
 
     @staticmethod
-    def veriry_transaction(sender, signature, data):
-        key = DSA.import_key(binascii.unhexlify(sender))
-        data_ = SHA256.new(data.encode('utf-8'))
+    def veriry_signature(public_key, signature, data):
+        key = DSA.import_key(binascii.unhexlify(public_key))
+        hash = SHA256.new(f"{data}\t{public_key}".encode('utf-8'))
         verifier = DSS.new(key, mode='fips-186-3')
-        return verifier.verify(data_, binascii.unhexlify(signature.encode('utf-8')))
+        return verifier.verify(hash, binascii.unhexlify(signature.encode('utf-8')))
 
 
 
-if __name__ == "__main__":
-    wallet = Wallet("123")
-    print(wallet.private_key)
-    address = wallet.address
-    print(address)
-    print(wallet.hash160(wallet.public_key))
-    print(wallet.address_to_public_hashed_hash(address))
-    sig = wallet.generate_signature(wallet.private_key, "hello world")
-    print(wallet.veriry_transaction(wallet.private_key, sig, "hello world"))
-
-    
