@@ -12,16 +12,16 @@ import binascii
 """
 
 class TransactionOutput:
-    def __init__(self, value, address):
+    def __init__(self, 
+                value:float, 
+                address:str):
+
         self.value = value
         self.address = address
         public_key_hash = binascii.hexlify(base64.b64decode(address)).decode()
         self.script_pubkey = f"OP_DUP\tOP_HASH160\t{public_key_hash}\tOP_EQUALVERIFY\tOP_CHECKSIG"
-            
-    def to_json(self):
-        return json.dumps(self.to_dict())
 
-    def to_dict(self):
+    def to_dict(self) -> dict:
         return {
             "value": self.value,
             "script_pubkey": {
@@ -29,4 +29,7 @@ class TransactionOutput:
                 "address": self.address
             }
         }
+    
+    def to_json(self) -> str:
+        return json.dumps(self.to_dict())
     

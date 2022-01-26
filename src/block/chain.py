@@ -1,56 +1,78 @@
-from block import Block
-from transaction import Transaction
-from queue import PriorityQueue
-from Crypto.Hash import SHA256
-from copy import deepcopy
 import json
-from wallet import Wallet
-from utils.constants import MINING_REWARD, DIFFICULTY
+from copy import deepcopy
 
+from .block import Block, BlockHead
+from src.transaction.transaction import Transaction
+from src.transaction.transaction_out import TransactionOutput
+from src.utils.constants import DIFFICULTY
+from src.utils.proof_of_work import ProofOfWork
+
+block_head = BlockHead(version = 0, 
+                    previous_block_hash = "", 
+                    merkle_root_hash = "", 
+                    timestamp = 0, 
+                    difficulty = DIFFICULTY, 
+                    nonce = 0)
+genesis_block = Block(tx_list = [],
+                    block_head = block_head)
 
 class Blockchain:
     def __init__(self):
-        self.last_block = Block(tx_list = [], 
-                                    previous_block_hash = "", 
-                                    nonce = 0, 
-                                    difficulty = DIFFICULTY, 
-                                    index = 0, 
-                                    timestamp = 0)
-        
-    def get_last_block_header(self):
-        return self.last_block.header.to_dict()
+        self.chain = []
+        self.height = len(self.chain) - 1
 
-    def add_block(self, block):
-        block.previous_block = self.last_block
-        self.last_block = block
+    def get_block(self, block_height:int) -> Block:
+        block = self.chain[block_height]
+        head = BlockHead(**block["head"])
+        tx_list = [Transaction.load(**tx) for tx in block["tx_list"]]
+        block = Block(tx_list=tx_list, block_head=head)
+        return block 
 
-    def get_utxos(self, address):
-        current_block = self.last_block
-        utxos = []
-        while current_block.previous_block:
-            for transaction in current_block.transactions:
-                utxos.extend(transaction.get_outputs_by_address(address))
-            current_block = current_block.previous_block
-        return utxos
+    @property
+    def last_block(self):
+        return self.get_block(self.height)
+
+    def add_block(self, 
+                block:dict):
+
+        self.chain.append(block)
+        self.height += 1
+
+    def get_utxo(self, 
+                block_height:int,
+                tx_hash:str, 
+                tx_output_n:int) -> TransactionOutput:
+
+        block = self.get_block(block_height)
+        tx = block.get_transaction(tx_hash)
+        txout = tx.vout[tx_output_n]
+        return txout
     
     def save(self):
         with open('blockchain.json', mode = 'w') as f:
-            chain = []
-            current_block = self
-            while current_block:
-                chain.append(current_block.to_dict())
-                current_block = current_block.previous_block
-            self.chain.reverse()
             f.write(json.dumps(self.chain))
 
     def load(self):
         with open('blockchain.json', mode = 'r') as f:
-            blockchain = f.read()
-            blockchain = json.loads(blockchain)
-            self.last_block = None 
-            for i, block in enumerate(blockchain):
-                if i == 0:
-                    continue 
-                block = Block.load(block)
-                block.previous_block = self.last_block
-                self.last_block = block
+            chain = f.read()
+            self.chain = json.loads(chain)
+
+    def length(self, other):
+        return self.height >= other.height
+
+    def __iter__(self):
+        for i in range(self.height):
+            yield i, self.get_block(i)
+
+    def verify_chain(self):
+        for i in range(1, self.height): 
+            prev_block = self.get_block(i - 1)
+            block = self.get_block(i)
+
+            if block.head.prev_block_hash != prev_block.head.block_hash:
+                return False 
+
+            elif not block.verify_block():
+                return False
+        return True
+

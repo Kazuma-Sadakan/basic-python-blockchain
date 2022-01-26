@@ -15,6 +15,7 @@ def create_transaction_input(private_key, public_key, previous_transaction=None,
     return TransactionInput(tx_hash, tx_output_n, signature = signature, pub_key = public_key)
 
 
+
 class MerkleTree:
     def __init__(self):
         pass

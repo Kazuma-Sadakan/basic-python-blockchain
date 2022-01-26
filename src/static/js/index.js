@@ -43,3 +43,7 @@ const createTxOutForm = () => {
     tx_out.append(tx_out_input_index)
     tx_out.append(tx_out_label_index)
 }
+
+tx_submit.addEventListner("click", () => {
+    
+})

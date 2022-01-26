@@ -1,26 +1,24 @@
-from tkinter.messagebox import NO
-from flask import Blueprint, render_template, request, redirect, jsonify
+from flask import Blueprint, request, jsonify
 from flask_login import login_user, logout_user, login_required
-from itsdangerous import exc
-from wallet.wallet import Wallet
-from database import NodeDatabase
+from src.network.node_db import NodeDB
+from src.wallet.wallet import Wallet
+from .auth import User
+node = NodeDB("nodes.db")
 auth = Blueprint("auth", __name__)
-node = NodeDatabase("nodes")
-
-
-    
 
 @auth.route("/wallet/create", methods=["POST"])
 def create_wallet():
     if request.method == "POST":
         try:
-            wallet = Wallet()
+            wallet = Wallet(wallet_id = 5000)
             response = {
                 'public_key': wallet.public_key,
                 'private_key': wallet.private_key,
                 'address': wallet.address,
                 'balance': ""
             }
+            print(wallet.address)
+            node.save_one(3000, wallet.address)
             return jsonify(response), 201
         except Exception as e:
             print(f"Error: {e}")
@@ -32,8 +30,10 @@ def create_wallet():
 @auth.route("/wallet/load", methods=["POST"])
 def load_wallet():
     if request.method == "POST":
+        request_data = request.get_json()
         try:
-            wallet = Wallet(request.form.password)
+            wallet = Wallet(wallet_id = 5000, private_key = request_data["password"])
+            
         except Exception as e:
             print(f"Error: {e}")
         try:
@@ -41,9 +41,11 @@ def load_wallet():
                 response = {
                     'public_key': wallet.public_key,
                     'private_key': wallet.private_key,
-                    'address': wallet.adddress,
+                    'address': wallet.address,
                     'balance': ""
                 }
+                user = User(*wallet.get())
+                login_user(user)
                 return jsonify(response), 201
         except Exception as e:
             print(f"Error: {e}")
@@ -52,7 +54,3 @@ def load_wallet():
             }
             return jsonify(response)
 
-@auth.route("/mine", methods=["GET", "POST"])
-@login_required
-def mine():
-    pass

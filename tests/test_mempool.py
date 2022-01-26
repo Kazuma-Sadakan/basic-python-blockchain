@@ -11,7 +11,7 @@ class TestMempool(unittest.TestCase):
         self.wallet1 = Wallet("123")
         self.wallet2 = Wallet("234")
 
-        coinbase_transaction = Transaction(vin=[], vout=[TransactionOutput(3, self.wallet1.address)])
+        coinbase_transaction = Transaction(_vin=[], _vout=[TransactionOutput(3, self.wallet1.address)])
         tx_hash = coinbase_transaction.tx_hash
         txin_1 = create_transaction_input(self.wallet1.private_key, self.wallet1.public_key, coinbase_transaction, tx_hash, 0)
         txout_1 = TransactionOutput(1, self.wallet2.address)

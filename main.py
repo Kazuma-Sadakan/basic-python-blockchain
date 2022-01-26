@@ -1,7 +1,5 @@
 import os 
 from src import create_app
-HOST =""
-PORT = ""
 
 if __name__ == "__main__":
     config = os.environ.get("development")
