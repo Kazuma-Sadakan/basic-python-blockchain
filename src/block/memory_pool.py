@@ -30,8 +30,13 @@ class Mempool:
     def __init__(self, _host, _port):
         self.redis = redis.Redis(host = _host, port = _port)
         
-    def set(self, transaction_hash, transaction):
-        self.redis.set(transaction_hash, transaction)
+    def add_tx(self, transaction_hash, transaction):
+        try:
+            self.redis.set(transaction_hash, transaction)
+            return True 
+        except Exception as e:
+            print(f"Error: {e}")
+            return False 
 
     def get(self, transaction_hash):
         data = self.redis.get(transaction_hash)
@@ -46,6 +51,10 @@ class Mempool:
 
     def remove(self, key):
         self.redis.delete(key)
+
+    def remove_all(self):
+        for key in self:
+            self.remove(key)
 
     def get_keys(self):
         for key in self.redis.scan_iter():

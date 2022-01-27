@@ -13,10 +13,10 @@ def create_app(config):
 
     from .auth.routes import auth
     # from .view.routes import view
-    # from .network.routes import network
+    from .network.routes import network
 
     app.register_blueprint(auth)
     # app.register_blueprint(view)
-    # app.register_blueprint(network)
+    app.register_blueprint(network)
 
     return app

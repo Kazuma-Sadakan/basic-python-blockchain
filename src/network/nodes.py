@@ -14,11 +14,11 @@ class Node:
     def get(self, endpoint):
         url = os.path.join(self.url, endpoint)
         request_data = requests.get(url)
-        return request_data
+        return request_data.json()
     
     def post(self, endpoint, data = None):
         url = os.path.join(self.url, endpoint)
-        request_data = requests.get(url, json=data)
+        request_data = requests.post(url, json=data)
         return request_data
 
     def to_dict(self):

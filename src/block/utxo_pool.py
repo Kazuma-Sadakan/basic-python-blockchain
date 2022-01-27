@@ -5,22 +5,22 @@ import os
 import pickle
 
 class UtxoDB:
-    def __init__(self, _host=None, _port=None, url=None):
+    def __init__(self, _host=None, _port=None, _url=None):
         try:
-            self.client = MongoClient(url) if url is not None else MongoClient(host = _host, port = _port)
+            self.client = MongoClient(_url) if _url else MongoClient(host = _host, port = _port)
         except Exception as e:
             print(f"Error: {e}")
 
-    def connect_db(self, db_name):
-        if db_name in self.client.list_database_names():
-            print(f"[*]Connect to {db_name}")
-            self.db = self.client[db_name]
+    def connect_db(self, _db_name):
+        if _db_name in self.client.list_database_names():
+            print(f"[*]Connect to {_db_name}")
+            self.db = self.client[_db_name]
         else:
-            print(f"[*]{db_name} created")
-            self.db = self.client[db_name]
+            print(f"[*]{_db_name} created")
+            self.db = self.client[_db_name]
 
-    def connect_collection(self, name):
-        self.collection = self.db[name]
+    def connect_collection(self, _name):
+        self.collection = self.db[_name]
 
     def save_one(self, address, data):
         try:
@@ -40,8 +40,8 @@ class UtxoDB:
             if not self.collection.find_one(filter={"address": address}):
                 self.collection.insert_one({"address": address, "unspent_outputs": data_list})
             else:
-                for data in data_list:
-                    self.collection.update_one({"address": address}, {"$push": {"unspent_outputs": data}})
+                # for data in data_list:
+                self.collection.update_one({"address": address}, {"$push": {"unspent_outputs": {"$each": data_list}}})
             print(f"Saving address: {address}, utxo: {data_list} success")
             return True
         except Exception as e:

@@ -1,7 +1,7 @@
 import unittest
 import time 
 
-from src.transaction.validation import Validation
+from src.transaction.verification import Validation
 from src.transaction.transaction import Transaction, TransactionInput, TransactionOutput
 from src.wallet.wallet import Wallet
 from src.utils.utils import create_transaction_input

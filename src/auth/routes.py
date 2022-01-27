@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify
-from flask_login import login_user, logout_user, login_required
+from flask_login import current_user, login_user, logout_user, login_required
 from src.network.node_db import NodeDB
+from src import node_db
 from src.wallet.wallet import Wallet
 from .auth import User
 node = NodeDB("nodes.db")
@@ -44,7 +45,7 @@ def load_wallet():
                     'address': wallet.address,
                     'balance': ""
                 }
-                user = User(*wallet.get())
+                user = User(**wallet.get())
                 login_user(user)
                 return jsonify(response), 201
         except Exception as e:
@@ -53,4 +54,5 @@ def load_wallet():
                 'message': "Loading a wallet failed"
             }
             return jsonify(response)
+
 

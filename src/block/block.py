@@ -18,7 +18,7 @@ class BlockHead:
                 merkle_root_hash:str, 
                 difficulty:float,
                 nonce:int,
-                timestamp:float=time.time()
+                timestamp:float
                 ):
         self.version = version
         self.prev_block_hash = previous_block_hash
@@ -73,31 +73,6 @@ class Block:
     def to_json(self) -> str:
         return json.dumps(self.to_dict())
 
-    def verify_block(self):
-        return ProofOfWork.valid_nonce(self.head.merkle_root_hash, 
-                                       self.head.prev_block_hash, 
-                                       self.head.difficulty, 
-                                       self.head.nonce, 
-                                       self.head.timestamp)
 
-if __name__ == "__main__":
-    tx = Transaction.load({"id": 0, "txin_list": [{"last_tx_id": 13, "last_txout_idx": 0, "script_sig": "12345\t54321"},\
-         {"last_tx_id": 12, "last_txout_idx": 1, "script_sig": ""}], \
-          "txout_list": [{"value": 100, "script_pubkey": "OP_DUP\tOP_HASH160\t123\tOP_EQUALVERIFY\tOP_CHECKSIG"}, \
-         {"value": 200, "script_pubkey": "OP_DUP\tOP_HASH160\t234\tOP_EQUALVERIFY\tOP_CHECKSIG"}]})
-
-    genesis_block = Block(tx_list = [],
-                        previous_block_hash = "",
-                        nonce = 0,
-                        difficulty=DIFFICULTY,
-                        id = 0,
-                        timestamp = time())
-
-    b1 = Block(tx_list = [tx, tx],
-                previous_block_hash = genesis_block.header.block_hash,
-                nonce = 0,
-                difficulty = DIFFICULTY,
-                id = 0,
-                timestamp = time())
 
  
