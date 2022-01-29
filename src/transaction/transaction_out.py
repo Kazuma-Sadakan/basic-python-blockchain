@@ -13,19 +13,13 @@ import binascii
 
 class TransactionOutput:
     def __init__(self, 
-                value:float, 
-                address:str):
+                _value:float, 
+                _address:str):
 
-        self.value = value
-        public_key_hash = binascii.hexlify(base64.b64decode(address)).decode()
+        self.value = _value
+        public_key_hash = binascii.hexlify(base64.b64decode(_address)).decode()
         self.script_pubkey = f"OP_DUP\tOP_HASH160\t{public_key_hash}\tOP_EQUALVERIFY\tOP_CHECKSIG"
-
-    def to_dict(self) -> dict:
-        return {
-            "value": self.value,
-            "script_pubkey": self.script_pubkey,
-        }
     
     def to_json(self) -> str:
-        return json.dumps(self.to_dict())
+        return json.dumps(self.__dict__)
     

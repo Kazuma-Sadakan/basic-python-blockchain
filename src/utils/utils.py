@@ -10,17 +10,6 @@ def double_sha256(data):
     hashed_data = hashlib.sha256(encoded_data).digest()
     return hashlib.sha256(hashed_data).hexdigest()
 
-
-def create_script_sig(signature, public_key):
-    return "{}\t{}".format(signature, public_key)
-
-def create_transaction_input(private_key, public_key, previous_transaction=None, tx_hash="", tx_output_n=0):
-    signature = Wallet.generate_signature(private_key, previous_transaction, public_key)
-    script_sig = create_script_sig(signature, public_key)
-    return TransactionInput(tx_hash, tx_output_n, script_sig)
-
-
-
 class MerkleTree:
     def __init__(self):
         pass

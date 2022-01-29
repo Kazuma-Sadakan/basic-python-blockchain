@@ -1,7 +1,8 @@
 import json
 import os
 import redis 
-
+from utxo_pool import UtxoDB
+utxo_db = UtxoDB(_host=None, _port=None, _url=None)
 # BASE_DIR = ""
 # FILE_PATH = os.path.join(BASE_DIR, ".json")
 
@@ -27,65 +28,86 @@ import redis
 
 
 class Mempool:
-    def __init__(self, _host, _port):
-        self.redis = redis.Redis(host = _host, port = _port)
+    def __init__(self, _host, _port, _db = 0):
+        self.redis = redis.Redis(host = _host, port = _port, db = _db)
         
-    def add_tx(self, transaction_hash, transaction):
+    def add_tx(self, _transaction_hash, _transaction):
         try:
-            self.redis.set(transaction_hash, transaction)
+            self.redis.set(_transaction_hash, _transaction)
             return True 
         except Exception as e:
             print(f"Error: {e}")
             return False 
 
-    def get(self, transaction_hash):
-        data = self.redis.get(transaction_hash)
+    def get_tx(self, _tx_hash):
+        try:
+            data = self.redis.get(_tx_hash)
+        except Exception as e:
+            print(f"Error: {e}")
+            return -1
         if data is None:
             return -1
         else:
             return data.decode()
 
     def get_all(self):
-        for val in self.values:
-            yield val.decode()
+        try:
+            data =  [val.decode() for val in self.values]
+        except Exception as e:
+            print(e)
+            return -1
+        return data
+        
 
-    def remove(self, key):
-        self.redis.delete(key)
+    def delete(self, _key):
+        if self.redis.exists(_key) == 1:
+            try:
+                self.redis.delete(_key)
+            except Exception as e:
+                print(e)
+                return False
+            return True
+        else:
+            return False 
 
-    def remove_all(self):
+    def delete_all(self):
         for key in self:
-            self.remove(key)
+            self.delete(key)
 
     def get_keys(self):
         for key in self.redis.scan_iter():
             yield key.decode() 
 
-    def find_one_in_vin(self, tx_hash, tx_output_n):
-        for item in self.values:
-            vin = json.loads(item)["vin"]
-            for txin in vin:
-                if txin["tx_hash"] == tx_hash and txin["tx_output_n"] == tx_output_n:
-                    return True 
+    def tx_out_exists(self, _tx_hash, _tx_output_n) -> bool:
+        transaction = self.get_tx(_tx_hash = _tx_hash)
+        tx = json.loads(transaction)
+        vout = tx["vout"]
+        for tx_in in vout:
+            if tx_in["tx_output_n"] == _tx_output_n:
+                return True 
         else:
             return False 
 
-    def find_one_in_vout(self, tx_hash, tx_output_n):
+    def tx_in_exists(self, _address, _tx_hash, _tx_output_n) -> bool:
         try:
-            data = json.loads(self.get(tx_hash))["vout"][tx_output_n]
-            return data
+            transaction = utxo_db.find_utxo(_address = _address, 
+                                            _tx_hash = _tx_hash, 
+                                            _tx_output_n = _tx_output_n)
+            tx = self.get_tx(_tx_hash = transaction["tx_hash"])
+            tx = json.loads(tx)
+            vin = tx["vin"]
+            return True
         except Exception as e:
             print("Error: {e}")
             return False 
 
     @property
     def values(self):
-        for key in self.redis.scan_iter():
-            yield self.redis.get(key)
+        return [self.redis.get(key) for key in self.redis.scan_iter()]
 
     @property
     def items(self):
-        for key in self.redis.scan_iter():
-            yield key.decode(), self.redis.get(key).decode()
+        return [[key.decode(), self.redis.get(key).decode()] for key in self.redis.scan_iter()]
 
     def __iter__(self):
         for key in self.redis.scan_iter():

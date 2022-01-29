@@ -54,9 +54,9 @@ class Wallet:
         return binascii.hexlify(base64.b64decode(address.encode("utf-8"))).decode("utf-8")
 
     @staticmethod
-    def generate_signature(private_key, data, public_key):
-        key = DSA.import_key(binascii.unhexlify(private_key))
-        hash = SHA256.new(f"{data}\t{public_key}".encode('utf-8'))
+    def generate_signature(_private_key, _data, _public_key):
+        key = DSA.import_key(binascii.unhexlify(_private_key))
+        hash = SHA256.new(f"{_data}\t{_public_key}".encode('utf-8'))
         signer = DSS.new(key, mode = 'fips-186-3')
         return binascii.hexlify(signer.sign(hash)).decode("utf-8")
 

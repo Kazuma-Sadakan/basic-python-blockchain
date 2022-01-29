@@ -2,6 +2,10 @@ from src import login_manager
 from flask_login import UserMixin
 from src.wallet.wallet import Wallet
 
+HOST = "localhost"
+PORT = 3000
+URL = f"{HOST}:{PORT}"
+
 class User(UserMixin):
     def __init__(self, private_key, public_key, address):
         self.id = private_key
@@ -28,7 +32,7 @@ class User(UserMixin):
 @login_manager.user_loader 
 def load_user(_private_key):
     try:
-        wallet = Wallet(5000, _private_key)
+        wallet = Wallet(URL, _private_key)
         return User(**wallet.get())
     except Exception as e:
         print(f"Error: {e}")

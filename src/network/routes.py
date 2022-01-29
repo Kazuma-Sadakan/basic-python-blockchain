@@ -15,7 +15,7 @@ from src.wallet.wallet import Wallet
 from src.utils.utils import MerkleTree
 from src.block.utxo_pool import UtxoDB
 from src.wallet.wallet import Wallet
-from src.utils.utils import create_transaction_input
+from src.utils.utils import create_transaction_input, create_script_sig
 from src.network.node_db import NodeDB
 from src.network.nodes import Node
 
@@ -37,7 +37,17 @@ for hostname, address in nodedb.get_all():
 
 @network.route("/chain", methods=["GET"])
 def get_chain():
-    return jsonify({"chain": blockchain.chain}), 200
+    try:
+        response = {
+            "chain": blockchain.chain
+            }
+        return jsonify(response), 200
+    except Exception as e:
+        print(f"Error: {e}")
+        response = {
+            "message": "blockchain not found"
+            }
+        return jsonify(response), 400
 
 @network.route("/transaction", methods=["POST"])
 @login_required
@@ -55,7 +65,7 @@ def create_transaction():
     # "111123dde201bc37db7dc57e0cb6243a875f3d0c799664d0a311c83633d2dbaf" + "0"
     # "72b950d2a37ffaf7b595a84acd976875d84e82c00bfa47ff50aea0e827f5b8c4" + "0"
     # ],
-    # send: [
+    # tx_outs: [
     # { value: 1,
     #   address: ""},
     # { value: 2
@@ -63,44 +73,92 @@ def create_transaction():
     # ],
     # "locktime": 0,
     # }
-    utxos = [utxo_db.find_utxo(current_user.address, utxo[: 64], utxo[64: ]) for utxo in request_data["utxos"]]
-    if not all(utxos):
+
+    vin = []
+    for utxo_hash in request_data["utxos"]:
+        tx_hash, tx_output_n = utxo_hash[: 64], utxo_hash[64: ]
+        utxo_data = utxo_db.find_utxo(_address = current_user.address, _tx_hash = tx_hash, _tx_output_n = tx_output_n)
+
+        if not utxo_data:
+            response = {
+                "message": "utxos you have requested do not exist"
+            }
+            return jsonify(response), 400
+
+    
+        transaction = blockchain.get_tx(_block_height = utxo_data["block_height"], _tx_hash = utxo_data["tx_hash"]) 
+        signature = Wallet.generate_signature(_private_key = current_user.private_key, 
+                                              _data = transaction.to_json(), 
+                                              _public_key = current_user.public_key)
+
+        tx_in = TransactionInput(_tx_hash = utxo_data["tx_hash"], 
+                                 _tx_output_n = utxo_data["tx_output_n"], 
+                                 _signature = signature,
+                                 _public_key = current_user.public_key)
+        vin.append(tx_in)
+        # txin = create_transaction_input(current_user.private_key, 
+        #                                 current_user.public_key, 
+        #                                 previous_transaction = transaction, 
+        #                                 tx_hash = utxo["tx_hash"], 
+        #                                 tx_output_n = utxo["tx_output_n"])
+        # txin_list.append(txin)
+
+    vout = []
+    for tx_out in request_data["tx_outs"]:
+        vout.append(TransactionOutput(_value = tx_out["value"],
+                                            _address = tx_out["address"]))
+
+    transaction = Transaction(_vin = vin, 
+                              _vout = vout,
+                              _version = 0,
+                              _locktime = request_data["locktime"])
+
+    requests.post("/add-transaction", json = {"transaction": transaction.to_dict()})
+
+@network.route("/add-transaction", methods=["POST"])
+def add_transaction():
+    request_data = request.get_json()
+
+    if not request_data:
         response = {
-            "message": "utxos you have requested do not exist"
+            'message': 'No data attached.'
+        }
+        return jsonify(response), 400
+    if request_data.get("transaction", None) is None :
+        response = {
+            'message': 'No transaction data found.'
         }
         return jsonify(response), 400
 
-    txin_list = []
-    for utxo in utxos:
-        previous_tx = blockchain.get_tx(block_height = utxo["block_height"], tx_hash = utxo["tx_hash"]) 
-        txin = create_transaction_input(current_user.private_key, 
-                                        current_user.public_key, 
-                                        previous_transaction = previous_tx, 
-                                        tx_hash = utxo["tx_hash"], 
-                                        tx_output_n = utxo["tx_output_n"])
-        txin_list.append(txin)
+    transaction = request_data["transaction"]
+    address = request_data["address"]
 
-    txout_list = []
-    for value, next_owner_address in request_data["send"]:
-        txout_list.append(TransactionOutput(value = value,
-                                            address = next_owner_address))
-
-    transaction = Transaction(_vin = txin_list, 
-                              _vout= txout_list,
-                              _version=0,
-                              _locktime = request_data["locktime"])
-
-    verification = Verification(transaction.to_dict())
+    verification = Verification(transaction)
     if verification.in_mempool():
-        return jsonify({"message": "The requested transaction has already been in process"}), 400
+        response = {
+            "message": "The requested transaction has already been in process"
+        }
+        return jsonify(response), 400
 
     elif not verification.valid_funds(current_user.address):
-        return jsonify({"message": "The fund is not enough"}), 400
+        response = {
+            "message": "The fund is not enough"
+        }
+        return jsonify(response), 400
 
-    elif not verification.success_unlock(current_user.address):
-        return jsonify({"message": "The utxos are not valid"}), 400
+    utxos = []
+    for txin in transaction["vin"]:
+        utxos.append(utxo_db.find_utxo(_address = address, 
+                                       _tx_hash = txin["tx_hash"], 
+                                       _tx_output_n = txin["tx_output_n"]))
 
-    elif mempool.add_tx(transaction.tx_hash, transaction.to_json()):
+    if not verification.success_unlock(_utxos = utxos):
+        response = {
+            "message": "The utxos are not valid"
+        }
+        return jsonify(response), 400
+
+    elif mempool.add_tx(transaction["tx_hash"], transaction):
         for node in node_list:
             try:
                 data = {"transaction": transaction.to_dict(),
@@ -113,31 +171,16 @@ def create_transaction():
 
             except requests.exceptions.ConnectionError:
                     return jsonify({"message": "Transaction Error"}), 400
+
+    mempool.add_tx(_tx_hash = transaction["tx_hash"], _transaction = transaction)
+    
    
 @network.route("/broadcast-transaction", methods=["POST"])
 def broadcast_transaction():
     request_data = request.get_json()
-    if not request_data:
-        response = {'message': 'data is missing'}
-        return jsonify(response), 400
-    try:
-        transaction = Transaction.load(request_data["transaction"])
-    except Exception as e:
-        print(f"Error: {e}")
-        response = {'message': 'Some data is missing'}
-        return jsonify(response), 400
+    
+    requests.post("/add-transaction", json = {"transaction": transaction.to_dict()})
 
-    verification = Verification(transaction.to_dict())
-    if verification.in_mempool():
-        return jsonify({"message": "The requested transaction has already been in process"}), 400
-
-    if not verification.valid_funds(request_data["address"]):
-        return jsonify({"message": "The fund is not enough"}), 400
-
-    if not verification.success_unlock(request_data["address"]):
-        return jsonify({"message": "The utxos are not valid"}), 400
-
-    mempool.set(transaction.tx_hash, transaction.to_json())
     for node in node_list:
         try:
             response = node.post("/broadcast-transaction", request_data)
@@ -150,6 +193,9 @@ def broadcast_transaction():
                 "message": "Transaction Error"
                 }
             return jsonify(response), 400
+
+    
+    
     
 
 @network.route("/mining")

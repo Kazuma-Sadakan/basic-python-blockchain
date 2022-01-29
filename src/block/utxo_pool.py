@@ -66,8 +66,8 @@ class UtxoDB:
 
     def find_utxos(self, address, keys):
         utxo_list = []
-        for tx_hash, tx_output_n in keys:
-            utxo_list.append(self.find_utxo(address, tx_hash, tx_output_n))
+        for key in keys:
+            utxo_list.append(self.find_utxo(address, tx_hash = key[: 64], tx_output_n = key[64: ]))
         return utxo_list
 
     @property

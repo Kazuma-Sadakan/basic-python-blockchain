@@ -7,24 +7,26 @@ from src.block.utxo_pool import UtxoDB
 from src.block.chain import Blockchain
 
 mempool = Mempool("localhost", 6379)
-db = UtxoDB('localhost', 27017)
-db.connect_db("utxo")
-db.connect_collection("utxo")
+utxo_db = UtxoDB('localhost', 27017)
+utxo_db.connect_db("utxo")
+utxo_db.connect_collection("utxo")
 chain = Blockchain()
 from src.utils.script import Script
 
 class Verification:
-    def __init__(self, transaction:dict):
-        self.tx = transaction
-        self.vin = transaction["vin"]
-        self.vout = transaction["vout"]
+    def __init__(self, _address, _transaction:dict):
+        # _address is sender's address
+        self.address = _address
+        self.tx = _transaction
+        self.vin = _transaction["vin"]
+        self.vout = _transaction["vout"]
         self.utxos = []
 
     def in_mempool(self):
-        if mempool.get(self.tx["tx_hash"]) != -1:
+        if mempool.get_tx(_tx_hash = self.tx["tx_hash"]) != -1:
             return True 
 
-        elif self.__in_mempool_vin():
+        elif self.__in_mempool_vin(_address = self.address):
             return True
         
         elif self.__in_mempool_vout():
@@ -34,49 +36,59 @@ class Verification:
             return False 
 
     def __in_mempool_vin(self):  
-        return any([mempool.find_one_in_vin(txin["tx_hash"], txin["tx_output_n"]) for txin in self.vin])
+        # 
+        return any([mempool.tx_in_exists(_address = self.address, 
+                                         _tx_hash = tx_in["tx_hash"], 
+                                         _tx_output_n = tx_in["tx_output_n"]) for tx_in in self.vin[:]])
     
     def __in_mempool_vout(self):
-        return any([mempool.find_one_in_vout(txin["tx_hash"], txin["tx_output_n"]) for txin in self.vin])
+        # prevent using utxo in the memory pool
+        # transaction inputs must not be transaction outputs in the mempool
+        return any([mempool.tx_out_exists(_tx_hash = tx_in["tx_hash"], 
+                                          _tx_output_n = tx_in["tx_output_n"]) for tx_in in self.vin[:]])
 
-    def in_utxos(self, address:str): 
-        for txin in self.vin:
-            try:
-                data = db.find_utxo(address, txin["tx_hash"], txin["tx_output_n"])
-                if not data:
-                    return False 
-            except Exception as e:
-                print(f"Error: {e}")    
-                return False 
-        else:
-            return True
+    # def in_utxos(self, _address:str): 
+    #     for txin in self.vin[:]:
+    #         try:
+    #             data = utxo_db.find_utxo(_address = _address, 
+    #                                     _tx_hash = txin["tx_hash"], 
+    #                                     _tx_output_n = txin["tx_output_n"])
+    #             if not data:
+    #                 return False 
+    #         except Exception as e:
+    #             print(f"Error: {e}")    
+    #             return False 
+    #     else:
+    #         return True
 
-    def collect_utxos(self, address:str):
-        for txin in self.vin:
-            self.utxos.append(db.find_utxo(address, txin["tx_hash"], txin["tx_output_n"]))
-
-    def valid_funds(self, address:str):
+    def valid_funds(self):
         total_input = 0
         total_output = 0
-        for txin in self.vin:
-            utxo = db.find_utxo(address, txin["tx_hash"], txin["tx_output_n"])
+        for tx_in in self.vin[:]:
+            utxo = utxo_db.find_utxo(_address = self.address, 
+                                     _tx_hash = tx_in["tx_hash"], 
+                                     _tx_output_n = tx_in["tx_output_n"])
             total_input += utxo["value"]
 
-        for txout in self.vout:
-            total_output += txout["value"]
+        for tx_out in self.vout[:]:
+            total_output += tx_out["value"]
 
         if total_input < total_output:
             return False 
 
         return True
 
-    def success_unlock(self, address):
-        for txin, utxo in zip(self.vin, self.utxos):
+    def success_unlock(self, _utxos):
+        for txin, utxo in zip(self.vin, _utxos):
             tx_hash, tx_output_n, block_height = utxo["tx_hash"], utxo["tx_output_n"], utxo["block_height"]
-            tx = chain.get_tx(block_height = block_height, tx_hash = tx_hash)
+            tx = chain.get_tx(_block_height = block_height, _tx_hash = tx_hash)
             script = txin["script_sig"] + "\t" + utxo["script_key"]
             unlocker = Script(tx)
-            return unlocker.run(script)
+            success = unlocker.run(script)
+            if not success:
+                return False 
+        else:
+            return True 
                 
 
     
