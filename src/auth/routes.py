@@ -1,12 +1,10 @@
 from flask import Blueprint, request, jsonify
 from flask_login import current_user, login_user, logout_user, login_required
 
-from src.network.node_db import NodeDB
+from src.network.node_db import save_one, get_one
 from src.wallet.wallet import Wallet
 from .auth import User
 
-
-node_db = NodeDB("nodes.db")
 auth = Blueprint("auth", __name__)
 
 HOST = "localhost"
@@ -17,12 +15,11 @@ URL = f"{HOST}:{PORT}"
 def create_wallet():
     try:
         wallet = Wallet(wallet_id = URL)
-        node_db.save_one(wallet.wallet_id, wallet.address)
+        save_one(wallet.wallet_id, wallet.address)
         response = {
             'public_key': wallet.public_key,
             'private_key': wallet.private_key,
             'address': wallet.address,
-            'balance': ""
         }
         return jsonify(response), 201
     except Exception as e:
@@ -32,21 +29,25 @@ def create_wallet():
         }
         return jsonify(response), 500
 
-@auth.route("/wallet/load", methods=["POST"])
+@auth.route("/login", methods=["POST"])
 def load_wallet():
     request_data = request.get_json()
+    if not request_data:
+        response = {
+            "message": "private key is missing"
+        }
+        return jsonify(response), 500
     try:
         wallet = Wallet(wallet_id = URL, private_key = request_data["private_key"])
         
     except Exception as e:
         print(f"Error: {e}")
     try:
-        if node_db.get_one(wallet.address):
+        if get_one(wallet.address):
             response = {
                 'public_key': wallet.public_key,
                 'private_key': wallet.private_key,
                 'address': wallet.address,
-                'balance': ""
             }
             user = User(**wallet.get())
             login_user(user)
@@ -59,3 +60,11 @@ def load_wallet():
         return jsonify(response), 500
 
 
+@auth.route("/logout", methods=["POST"])
+@login_required
+def logout():
+    logout_user()
+    response = {
+        "message": "loggedout"
+    }
+    return jsonify(response), 200

@@ -1,53 +1,89 @@
-import time, requests
+import time, requests, json
 from flask import Blueprint, request, jsonify
 from flask_login import login_required, current_user
-from src.block import memory_pool
-from src.transaction.verification import Verification
 from src.utils.constants import DIFFICULTY, MINING_REWARD
 from src.transaction.transaction import Transaction
 from src.transaction.transaction_in import TransactionInput
 from src.transaction.transaction_out import TransactionOutput
 from src.block.block import BlockHead, Block
 from src.utils.proof_of_work import ProofOfWork
-from src.block.memory_pool  import Mempool
-from src.block.chain import Blockchain
+from src.block.memory_pool  import add_tx, delete_all, get_all
+from src.block.blockchain import Blockchain
 from src.wallet.wallet import Wallet
 from src.utils.utils import MerkleTree
-from src.block.utxo_pool import UtxoDB
+from src.block.utxo_pool import get_utxo, get_utxos
 from src.wallet.wallet import Wallet
-from src.utils.utils import create_transaction_input, create_script_sig
-from src.network.node_db import NodeDB
-from src.network.nodes import Node
+from src.network.node_db import get_all as node_get_all, get_one as node_get_one, save_one as node_save_one
+from src.utils.script import Script
 
 network = Blueprint("network", __name__)
+VERSION = 0
 
-utxo_db = UtxoDB('localhost', 27017)
-utxo_db.connect_db("utxo")
-utxo_db.connect_collection("utxo")
+if current_user.is_authenticated():
+    global blockchain 
+    blockchain = Blockchain.load_from_db()
 
-mempool = Mempool("localhost", 6379)
+def verify_transaction(transaction:Transaction, address:str):
+    if transaction.in_mempool() or not transaction.valid_funds():
+        return False 
 
-blockchain = Blockchain()
-blockchain.load()
+    for tx_in in transaction.vin:
+        utxo = get_utxo(address = address, 
+                        tx_hash = tx_in.tx_hash, 
+                        tx_output_n = tx_in.tx_output_n)
+        
+        tx = blockchain.get_tx(block_height = utxo["block_height"], tx_hash = utxo["tx_hash"])
+        unlocker = Script(tx.to_json())
+        script = f"{tx_in.script_sig}\t{utxo['script_key']}"
+        success = unlocker.run(script)
+        if not success:
+            return True
 
-nodedb = NodeDB("nodes.db")
-node_list = []
-for hostname, address in nodedb.get_all():
-    node_list.append(Node(hostname=hostname, address=address))
+def broadcast(transaction:Transaction, address:str):
+    data = {"transaction": transaction.to_dict(),
+            "address": address}
+    for hostname, address in node_get_all():
+        try:
+            response = requests.post(f"http://{hostname}/broadcast-transaction", json = data)
+            if response.status_code == 400 or response.status_code == 500:
+                print("broadcasing transaction error")
+                return False 
+        except requests.exceptions.ConnectionError:
+            return False 
+    return True
 
-@network.route("/chain", methods=["GET"])
-def get_chain():
+@network.route("/blockchain", methods=["GET"])
+@login_required
+def get_blockchain():
     try:
         response = {
-            "chain": blockchain.chain
-            }
+            "chain": blockchain.to_dict(),
+            "height": blockchain.height,
+            "last_block_hash": blockchain.last_block.block_hash
+        }
         return jsonify(response), 200
     except Exception as e:
         print(f"Error: {e}")
         response = {
-            "message": "blockchain not found"
-            }
+            "message": "Blockchain not found."
+        }
         return jsonify(response), 400
+
+
+# request_data = 
+# {"utxos": [
+# "tx_hash" + "tx_output_n"
+# "111123dde201bc37db7dc57e0cb6243a875f3d0c799664d0a311c83633d2dbaf" + "0"
+# "72b950d2a37ffaf7b595a84acd976875d84e82c00bfa47ff50aea0e827f5b8c4" + "0"
+# ],
+# tx_outs: [
+# { value: 1,
+#   address: ""},
+# { value: 2
+#   address: ""}
+# ],
+# "locktime": 0,
+# }
 
 @network.route("/transaction", methods=["POST"])
 @login_required
@@ -59,178 +95,145 @@ def create_transaction():
         }
         return jsonify(response), 400
 
-    # request_data = 
-    # {"utxos": [
-    # "tx_hash" + "tx_output_n"
-    # "111123dde201bc37db7dc57e0cb6243a875f3d0c799664d0a311c83633d2dbaf" + "0"
-    # "72b950d2a37ffaf7b595a84acd976875d84e82c00bfa47ff50aea0e827f5b8c4" + "0"
-    # ],
-    # tx_outs: [
-    # { value: 1,
-    #   address: ""},
-    # { value: 2
-    #   address: ""}
-    # ],
-    # "locktime": 0,
-    # }
-
     vin = []
     for utxo_hash in request_data["utxos"]:
         tx_hash, tx_output_n = utxo_hash[: 64], utxo_hash[64: ]
-        utxo_data = utxo_db.find_utxo(_address = current_user.address, _tx_hash = tx_hash, _tx_output_n = tx_output_n)
+        utxo_data = get_utxo(address = current_user.address, 
+                            tx_hash = tx_hash, 
+                            tx_output_n = tx_output_n)
 
-        if not utxo_data:
+        if utxo_data is None:
             response = {
-                "message": "utxos you have requested do not exist"
+                "message": "utxo you requested not exists"
             }
             return jsonify(response), 400
 
-    
-        transaction = blockchain.get_tx(_block_height = utxo_data["block_height"], _tx_hash = utxo_data["tx_hash"]) 
-        signature = Wallet.generate_signature(_private_key = current_user.private_key, 
-                                              _data = transaction.to_json(), 
-                                              _public_key = current_user.public_key)
+        transaction = blockchain.get_tx(block_height = utxo_data["block_height"], 
+                                        tx_hash = tx_hash) 
 
-        tx_in = TransactionInput(_tx_hash = utxo_data["tx_hash"], 
-                                 _tx_output_n = utxo_data["tx_output_n"], 
-                                 _signature = signature,
-                                 _public_key = current_user.public_key)
+        signature = Wallet.generate_signature(private_key = current_user.private_key, 
+                                            data = transaction.to_json(), 
+                                            public_key = current_user.public_key) 
+
+        tx_in = TransactionInput(tx_hash = tx_hash, 
+                                tx_output_n = tx_output_n, 
+                                signature = signature,
+                                public_key = current_user.public_key)
         vin.append(tx_in)
-        # txin = create_transaction_input(current_user.private_key, 
-        #                                 current_user.public_key, 
-        #                                 previous_transaction = transaction, 
-        #                                 tx_hash = utxo["tx_hash"], 
-        #                                 tx_output_n = utxo["tx_output_n"])
-        # txin_list.append(txin)
 
     vout = []
     for tx_out in request_data["tx_outs"]:
-        vout.append(TransactionOutput(_value = tx_out["value"],
-                                            _address = tx_out["address"]))
+        vout.append(TransactionOutput(value = tx_out["value"],
+                                    address = tx_out["address"]))
 
-    transaction = Transaction(_vin = vin, 
-                              _vout = vout,
-                              _version = 0,
-                              _locktime = request_data["locktime"])
-
-    requests.post("/add-transaction", json = {"transaction": transaction.to_dict()})
-
-@network.route("/add-transaction", methods=["POST"])
-def add_transaction():
-    request_data = request.get_json()
-
-    if not request_data:
+    transaction = Transaction(vin = vin, 
+                            vout = vout,
+                            version = VERSION,
+                            locktime = request_data["locktime"])
+        
+    success = verify_transaction(transaction, current_user.address)
+    if not success:
         response = {
-            'message': 'No data attached.'
-        }
-        return jsonify(response), 400
-    if request_data.get("transaction", None) is None :
-        response = {
-            'message': 'No transaction data found.'
-        }
+                "message": "verifying the transaction failed"
+            }
         return jsonify(response), 400
 
-    transaction = request_data["transaction"]
-    address = request_data["address"]
-
-    verification = Verification(transaction)
-    if verification.in_mempool():
+    success = add_tx(tx_hash = transaction["tx_hash"], transaction = transaction)
+    if not success:
         response = {
-            "message": "The requested transaction has already been in process"
-        }
+                "message": "adding the transaction failed."
+            }
         return jsonify(response), 400
 
-    elif not verification.valid_funds(current_user.address):
+    success = broadcast(transaction, current_user.address)
+    if not success:
         response = {
-            "message": "The fund is not enough"
-        }
+                "message": "broadcasting the transaction failed."
+            }
         return jsonify(response), 400
 
-    utxos = []
-    for txin in transaction["vin"]:
-        utxos.append(utxo_db.find_utxo(_address = address, 
-                                       _tx_hash = txin["tx_hash"], 
-                                       _tx_output_n = txin["tx_output_n"]))
-
-    if not verification.success_unlock(_utxos = utxos):
-        response = {
-            "message": "The utxos are not valid"
-        }
-        return jsonify(response), 400
-
-    elif mempool.add_tx(transaction["tx_hash"], transaction):
-        for node in node_list:
-            try:
-                data = {"transaction": transaction.to_dict(),
-                        "sender": {"hostname": hostname, 
-                                "address": address} 
-                }
-                response = node.post("/broadcast-transaction", data)
-                if response.status_code == 400 or response.status_code == 500:
-                    return jsonify({"message": 'Transaction declined.'}), 400
-
-            except requests.exceptions.ConnectionError:
-                    return jsonify({"message": "Transaction Error"}), 400
-
-    mempool.add_tx(_tx_hash = transaction["tx_hash"], _transaction = transaction)
-    
-   
+        
 @network.route("/broadcast-transaction", methods=["POST"])
 def broadcast_transaction():
     request_data = request.get_json()
-    
-    requests.post("/add-transaction", json = {"transaction": transaction.to_dict()})
+    transaction = Transaction.load(**request_data["transaction"])
+    address = request_data["address"]
 
-    for node in node_list:
-        try:
-            response = node.post("/broadcast-transaction", request_data)
-            if response.status_code == 400 or response.status_code == 500:
-                print('Transaction declined, needs resolving')
-                return False
+    success = verify_transaction(transaction = transaction, address = address)
+    if not success:
+        response = {
+                "message": "verifying the transaction failed"
+            }
+        return jsonify(response), 400
 
-        except requests.exceptions.ConnectionError:
-            response = {
-                "message": "Transaction Error"
-                }
-            return jsonify(response), 400
+    success = add_tx(tx_hash = transaction["tx_hash"], transaction = transaction)
+    if not success:
+        response = {
+                "message": "adding the transaction failed."
+            }
+        return jsonify(response), 400
+
+    success = broadcast(transaction = transaction, address = current_user.address)
+    if not success:
+        response = {
+                "message": "broadcasting the transaction failed."
+            }
+        return jsonify(response), 400
 
     
-    
-    
 
-@network.route("/mining")
-def mining():
-    tx_list = [Transaction.load(**tx) for tx in mempool.get_all()]
-    previous_block_hash = blockchain.last_block.head.block_hash
-    tx_hash_list = [tx.tx_hash for tx in tx_list]
+@network.route("/mine", methods=["POST"])
+def mine():
+    if blockchain.has_conflict:
+        requests.post("/resolve-conflict")
+        response = {
+            'message': 'a request conflicts with differennt blockchain nodes'
+        }
+        return jsonify(response), 409
+
+    tx_list = [Transaction(vin = [], vout = [TransactionOutput(MINING_REWARD, current_user.address)])]
+    tx_list.extend([Transaction.load(json.loads(tx)) for tx in get_all()])
+    last_block_hash = blockchain.last_block.head.block_hash
+    tx_hash_list = [tx.tx_hash for tx in tx_list[1: ]]
     merkle_root_hash = MerkleTree.generate_merkle_root(tx_hash_list)
     timestamp = time.time()
 
     nonce = ProofOfWork.get_nonce(merkle_root_hash = merkle_root_hash, 
-                                previous_block_hash = previous_block_hash,
-                                difficulty = DIFFICULTY, 
-                                timestamp = timestamp)
+                                  previous_block_hash = last_block_hash,
+                                  difficulty = DIFFICULTY, 
+                                  timestamp = timestamp)
 
     block_head = BlockHead(version = 0, 
-             previous_block_hash = previous_block_hash, 
-             merkle_root_hash = merkle_root_hash, 
-             difficulty = DIFFICULTY,
-             nonce = nonce,
-             timestamp = timestamp)
+                           previous_block_hash = last_block_hash, 
+                           merkle_root_hash = merkle_root_hash, 
+                           difficulty = DIFFICULTY,
+                           nonce = nonce,
+                           timestamp = timestamp)
 
-    coinbase_transaction = Transaction(vin=[], vout=[TransactionOutput(MINING_REWARD, current_user.address)])
-    tx_list.insert(0, coinbase_transaction)
     block = Block(tx_list = tx_list, block_head = block_head)
     block_dict = block.to_dict()
+    block_height = blockchain.height
+
     blockchain.add_block(block_dict)
-    mempool.remove_all()
-    for node in node_list:
+    delete_all()
+
+    for hostname, address in node_get_all:
         try:
-            response = node.post("/broadcast-block", {"block": block_dict})
+            response = requests.post(f"http://{hostname}/broadcast-block", {"block": block_dict,
+                                                                            "block_height": block_height})
             if response.status_code == 400 or response.status_code == 500:
-                print('Block declined')
-            # if response.status_code == 409:
-            #     self.resolve_conflicts = True
+                response = {
+                    "message": "mining failed."
+                }
+                return jsonify(response), 400
+
+            if response.status_code == 409:
+                blockchain.has_conflicts = True
+                response = {
+                    "message": "blockchain conflicts with other nodes."
+                }
+                # return jsonify(response), 400
+                print(response)
         except requests.exceptions.ConnectionError:
             continue
     return jsonify({"block": block.to_dict()}), 201
@@ -239,33 +242,106 @@ def mining():
 def broadcast_block():
     request_data = request.get_json()
     if not request_data:
-        response = {'message': 'No data found.'}
+        response = {
+            'message': 'Data not found.'
+        }
         return jsonify(response), 400
-    if 'block' not in request_data:
-        response = {'message': 'Some data is missing.'}
+
+    elif not all(key in request_data for key in ["block", "block_height"]):
+        response = {
+            'message': 'Some data is missing.'
+        }
         return jsonify(response), 400
-    block = request_data['block']
-    if not blockchain.verify_chain():
-        response = {'message': 'local blockchain is not valid.'}
+
+    elif request_data['block']["block_head"]["previous_block_hash"] != blockchain.last_block.block_hash and\
+        request_data["block_height"] <= blockchain.height: 
+        response = {
+            'message': "Blockchain conflicts with other nodes."
+        }
+        return jsonify(response), 409
+
+    elif not blockchain.verify_chain():
+        response = {
+            'message': 'local blockchain is not valid.'
+        }
         return jsonify(response), 400
-    for node in node_list:
-        chain = node.get("/chain")
-        
-        longest_chain = blockchain.chain[:]
-        if len(longest_chain) < len(chain):
-            pass
+
+    block = Block.load(request_data['block'])
+    if  ProofOfWork.valid_nonce(merkle_root_hash = block.block_head.merkle_root_hash, 
+                                previous_block_hash = block.block_head.prev_block_hash, 
+                                difficulty = block.block_head.difficulty, 
+                                timestamp = block.block_head.timestamp, 
+                                nonce = block.block_head.nonce):
+        blockchain.add_block(block)
+        response = {
+            "message": "Adding the block success"
+        }
+        return jsonify(response), 201
+    
+
+@network.route("/resolve-conflict", methods=["POST"])
+def resolve_conflict():
+    for hostname, address in node_get_all():
+        try:
+            response = requests.get(f"http://{hostname}/blockchain")
+            if response.status_code == 400 or response.status_code == 500:
+                return False 
+        except requests.exceptions.ConnectionError:
+            return False 
+
+    if blockchain.height >= response["height"]:
+        if blockchain.last_block.block_hash == response["block_hash"]:
+            chain = response["chain"]
+            len(chain)
+            chain = chain.load(chain)
+            return True
+
 
 @network.route("/node", methods = ["GET"])
 @network.route("/")
 def node():
-    return render_template("node.html")
+    nodes = node_get_all()
+    return jsonify({"nodes": nodes}), 200
+
+@network.route("/advatise-node", methods=["POST"])
+@login_required
+def advatise_node():
+    request_data = request.get_json()
+    if not request_data:
+        response = {
+            "message": "data not found"
+        }
+        return jsonify(response), 500
+
+    elif "node" not in request_data:
+        response = {
+            "message": "node not found in the request"
+        }
+        return jsonify(response), 400
     
+    elif node_get_one(request_data["node"]):
+        response = {
+            "message": "The node is already in the list."
+        }
+        return jsonify(response), 400
+    
+    node_save_one(hostname = request_data["node"]["hostname"], 
+                  address = request_data["node"]["address"])
+                  
+    for hostname, address in node_get_all():
+        data = {
+            "hostname": hostname,
+            "address": current_user.address
+        }
+        response = requests.post(f"http://{hostname}/advatise-node", json = data)
+
+
 
 @network.route("/balance", methods=["GET"])
 @login_required
 def balance():
     try:
-        utxos = db.find_utxos(address = current_user.address)
+        utxos = get_utxos(address = current_user.address)
         balance = sum([utxo["value"] for utxo in utxos])
         response = {
             'balance': balance

@@ -1,7 +1,7 @@
 import os, json
 from copy import deepcopy
 import requests
-
+from .node_db import NodeDB
 class Node:
     def __init__(self, hostname, address):
         self.hostname = hostname
@@ -9,23 +9,23 @@ class Node:
         self.url = f"http:{hostname}"
 
     def __eq__(self, other):
-        return self.hostname == other.hostname
+        return isinstance(other, Node) and self.hostname == other.hostname
 
     def get(self, endpoint):
         url = os.path.join(self.url, endpoint)
         request_data = requests.get(url)
-        return request_data.json()
+        return request_data
     
     def post(self, endpoint, data = None):
         url = os.path.join(self.url, endpoint)
-        request_data = requests.post(url, json=data)
+        request_data = requests.post(url, json = data)
         return request_data
 
     def to_dict(self):
-        return deepcopy({
+        return {
             "hostname": self.hostname,
             "address": self.address
-        })
+        }
 
     def to_json(self):
         return json.dumps(self.to_dict())
