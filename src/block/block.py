@@ -15,7 +15,7 @@ class BlockHead:
                 timestamp:float
                 ):
         self.version = version
-        self.prev_block_hash = previous_block_hash
+        self.previous_block_hash = previous_block_hash
         self.merkle_root_hash = merkle_root_hash
         self.timestamp = timestamp
         self.difficulty = difficulty

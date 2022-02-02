@@ -72,17 +72,17 @@ class Transaction:
 
     @classmethod
     def load(cls, tx:dict):
-        vin = [TransactionInput(**tx_in) for tx_in in tx["vin"]]
-        vout = [TransactionOutput(**tx_out) for tx_out in tx["vout"]]
-        return cls(vin = vin, vout = vout, version = tx["version"], time = tx["time"])
+        vin = [TransactionInput.load(tx_in) for tx_in in tx["vin"]]
+        vout = [TransactionOutput.load(tx_out) for tx_out in tx["vout"]]
+        return cls(vin = vin, vout = vout, version = tx["version"], locktime = tx["locktime"])
 
     def to_dict(self) -> dict:
         return {
             "tx_hash": self.tx_hash,
             "version": self.version,
             "locktime": self.locktime,
-            "vin": [vars(tx_in) for tx_in in self.vin],
-            "vout": [vars(tx_out) for tx_out in self.vout]
+            "vin": [tx_in.to_dict() for tx_in in self.vin],
+            "vout": [tx_out.to_dict() for tx_out in self.vout]
         }
 
     def to_json(self) -> str:

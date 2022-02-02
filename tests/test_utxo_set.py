@@ -1,13 +1,9 @@
-from charset_normalizer import utils
-from src.block.utxo_pool import UtxoDB
 import unittest
 
-class TestUtxoDB(unittest.TestCase):
-    def setUp(self):
-        self.db = UtxoDB('localhost', 27017)
-        self.db.connect_db("utxo")
-        self.db.connect_collection("utxo")
+from src.block.utxo_pool import get_utxo, get_utxos, save_many
 
+
+class TestUtxoDB(unittest.TestCase):
     def test_save(self):
         vout = [{"tx_hash": "111123dde201bc37db7dc57e0cb6243a875f3d0c799664d0a311c83633d2dbaf",
                 'value': 1, 
@@ -23,22 +19,15 @@ class TestUtxoDB(unittest.TestCase):
                 "block_height": 1,
                 'address': 'bKkcz/tKf7vQiBQ094KvbkIbuG8=',
                 }]
-        self.db.save_many('KvWgv2g+KIr36c0FLyhSHD5K7+o=', vout)
-
-    def test_get_tx_hashes(self):
-        print("[*] test get tx_hashes")
-        for tx in self.db:
-            print(tx)
-
-    def test_get_item(self):
-        print("[*] test get item")
-        for key, unspent_outputs in self.db.items:
-            print(key, "<*>", unspent_outputs)
+        save_many('KvWgv2g+KIr36c0FLyhSHD5K7+o=', vout)
 
     def test_find_utxo(self):
         print("[*] test find utxo")
-        print(self.db.find_utxo("KvWgv2g+KIr36c0FLyhSHD5K7+o=", "111123dde201bc37db7dc57e0cb6243a875f3d0c799664d0a311c83633d2dbaf", 0))
+        print(get_utxo("KvWgv2g+KIr36c0FLyhSHD5K7+o=", "111123dde201bc37db7dc57e0cb6243a875f3d0c799664d0a311c83633d2dbaf", 0))
 
     def test_find_utxos(self):
         print("[*] test get utxos")
-        print(self.db.get_utxos('KvWgv2g+KIr36c0FLyhSHD5K7+o='))
+        print(get_utxos('KvWgv2g+KIr36c0FLyhSHD5K7+o='))
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1,27 +1,50 @@
-import time, requests, json
+import time
+import requests
+import logging
+import json
+import threading
+import queue
+from enum import Enum
+
+
 from flask import Blueprint, request, jsonify
 from flask_login import login_required, current_user
-from src.utils.constants import DIFFICULTY, MINING_REWARD
+from src.utils.constants import DIFFICULTY, MINING_REWARD, VERSION
 from src.transaction.transaction import Transaction
 from src.transaction.transaction_in import TransactionInput
 from src.transaction.transaction_out import TransactionOutput
 from src.block.block import BlockHead, Block
 from src.utils.proof_of_work import ProofOfWork
-from src.block.memory_pool  import add_tx, delete_all, get_all
+from src.block.memory_pool  import add_tx, delete_all, get_all, get_tx
 from src.block.blockchain import Blockchain
 from src.wallet.wallet import Wallet
 from src.utils.utils import MerkleTree
 from src.block.utxo_pool import get_utxo, get_utxos
 from src.wallet.wallet import Wallet
-from src.network.node_db import get_all as node_get_all, get_one as node_get_one, save_one as node_save_one
+from src.network.node_db import delete_one, get_all as node_get_all, get_one as node_get_one, save_one as node_save_one
 from src.utils.script import Script
 
-network = Blueprint("network", __name__)
-VERSION = 0
+logging.basicConfig(filename="test.log", level=logging.DEBUG, 
+                    format="%(asctime)s:%(levelname)s:%(message)s")
 
-if current_user.is_authenticated():
-    global blockchain 
-    blockchain = Blockchain.load_from_db()
+network = Blueprint("network", __name__)
+
+class Status(Enum):
+    PROCESS = 1,
+    FAIL = 0,
+    SUCCESS = 2,
+    CONFLICT = 3,
+    CRITICAL = 4,
+
+
+def load_blockchain():
+    if current_user is not None:
+        global blockchain 
+        blockchain = Blockchain()
+        blockchain.load_from_db()
+        logging.INFO("loading the blockchain succeeded.")
+
+load_blockchain()
 
 def verify_transaction(transaction:Transaction, address:str):
     if transaction.in_mempool() or not transaction.valid_funds():
@@ -46,15 +69,17 @@ def broadcast(transaction:Transaction, address:str):
         try:
             response = requests.post(f"http://{hostname}/broadcast-transaction", json = data)
             if response.status_code == 400 or response.status_code == 500:
-                print("broadcasing transaction error")
+                logging.error(f"broadcasing transaction to hostname:{hostname} failed.")
                 return False 
         except requests.exceptions.ConnectionError:
+            logging.error(f"broadcasing transaction to hostname:{hostname} resulted in ConnectionError.")
             return False 
     return True
 
 @network.route("/blockchain", methods=["GET"])
 @login_required
 def get_blockchain():
+    print(blockchain.to_dict())
     try:
         response = {
             "chain": blockchain.to_dict(),
@@ -63,7 +88,7 @@ def get_blockchain():
         }
         return jsonify(response), 200
     except Exception as e:
-        print(f"Error: {e}")
+        logging.error(f"failed in getting the blockchain.")
         response = {
             "message": "Blockchain not found."
         }
@@ -97,7 +122,8 @@ def create_transaction():
 
     vin = []
     for utxo_hash in request_data["utxos"]:
-        tx_hash, tx_output_n = utxo_hash[: 64], utxo_hash[64: ]
+        tx_hash, tx_output_n = utxo_hash[: 64], int(utxo_hash[64: ])
+        
         utxo_data = get_utxo(address = current_user.address, 
                             tx_hash = tx_hash, 
                             tx_output_n = tx_output_n)
@@ -108,9 +134,10 @@ def create_transaction():
             }
             return jsonify(response), 400
 
+        print(blockchain)
         transaction = blockchain.get_tx(block_height = utxo_data["block_height"], 
                                         tx_hash = tx_hash) 
-
+        
         signature = Wallet.generate_signature(private_key = current_user.private_key, 
                                             data = transaction.to_json(), 
                                             public_key = current_user.public_key) 
@@ -184,16 +211,16 @@ def broadcast_transaction():
 
 @network.route("/mine", methods=["POST"])
 def mine():
-    if blockchain.has_conflict:
+    if blockchain.has_conflicts:
         requests.post("/resolve-conflict")
         response = {
             'message': 'a request conflicts with differennt blockchain nodes'
         }
         return jsonify(response), 409
 
-    tx_list = [Transaction(vin = [], vout = [TransactionOutput(MINING_REWARD, current_user.address)])]
-    tx_list.extend([Transaction.load(json.loads(tx)) for tx in get_all()])
-    last_block_hash = blockchain.last_block.head.block_hash
+    tx_list = [Transaction(vin = [], vout = [TransactionOutput(MINING_REWARD, current_user.address)], version=VERSION, locktime=0)]
+    tx_list.extend([Transaction.load(tx) for tx in get_all()])
+    last_block_hash = blockchain.last_block.block_head.block_hash
     tx_hash_list = [tx.tx_hash for tx in tx_list[1: ]]
     merkle_root_hash = MerkleTree.generate_merkle_root(tx_hash_list)
     timestamp = time.time()
@@ -214,10 +241,39 @@ def mine():
     block_dict = block.to_dict()
     block_height = blockchain.height
 
-    blockchain.add_block(block_dict)
+    blockchain.add_block(block)
+    blockchain.save_to_db()
     delete_all()
+    # q = queue.Queue()
+    # def create_node_queue():
+    #     for hostname, address in node_get_all():
+    #         q.put((hostname, address))
 
-    for hostname, address in node_get_all:
+    # def send(q, data, results):
+    #     hostname, address = q.get()
+    #     lock = threading.Lock
+    #     try:
+    #         response = requests.post(f"http://{hostname}/broadcast-block", data)
+    #         results.append({"address": address, "status": Status.SUCCESS})
+    #         if response.status_code == 400 or response.status_code == 500:
+    #             results.append({"address": address, "status": Status.FAIL})
+                
+    #         if response.status_code == 409:
+    #             results.append({"address": address, "status": Status.CONFLICT})
+                
+
+    #     except requests.exceptions.ConnectionError:
+    #         results.append({"address": address, "status": Status.CRITICAL})
+    # data = {"block": block_dict,
+    #         "block_height": block_height}
+    # threads = []
+    # results = []
+    # while not q.empty():
+    #     threads.append(threading.Thread(target = send, args = (q, data, results, )).start())
+
+
+    
+    for hostname, address in node_get_all():
         try:
             response = requests.post(f"http://{hostname}/broadcast-block", {"block": block_dict,
                                                                             "block_height": block_height})
@@ -232,9 +288,11 @@ def mine():
                 response = {
                     "message": "blockchain conflicts with other nodes."
                 }
-                # return jsonify(response), 400
-                print(response)
+                logging.info(f"blockchain conflicts with hostname:{hostname} failed.")
+                return jsonify(response), 400
+                
         except requests.exceptions.ConnectionError:
+            logging.error(f"broadcasing a block to hostname:{hostname} failed.")
             continue
     return jsonify({"block": block.to_dict()}), 201
 
@@ -273,11 +331,13 @@ def broadcast_block():
                                 timestamp = block.block_head.timestamp, 
                                 nonce = block.block_head.nonce):
         blockchain.add_block(block)
+        blockchain.save_to_db()
         response = {
             "message": "Adding the block success"
         }
         return jsonify(response), 201
-    
+
+
 
 @network.route("/resolve-conflict", methods=["POST"])
 def resolve_conflict():
@@ -319,15 +379,17 @@ def advatise_node():
         }
         return jsonify(response), 400
     
-    elif node_get_one(request_data["node"]):
+    hostname = request_data["node"]["hostname"]
+    address = request_data["node"]["address"]
+    if node_get_one(address):
         response = {
             "message": "The node is already in the list."
         }
         return jsonify(response), 400
     
-    node_save_one(hostname = request_data["node"]["hostname"], 
-                  address = request_data["node"]["address"])
-                  
+    node_save_one(hostname = hostname, 
+                  address = address)
+
     for hostname, address in node_get_all():
         data = {
             "hostname": hostname,
@@ -335,6 +397,25 @@ def advatise_node():
         }
         response = requests.post(f"http://{hostname}/advatise-node", json = data)
 
+
+@network.route("/delete/<address>", methods=["DELETE"])
+def delete_node(address):
+    if address == "" or address is None:
+        response = {
+            "message": "node couldn't find"
+        }
+        return jsonify(response), 400
+    success = delete_one(address = address)
+    if not success:
+        response = {
+            "message": "deleting a node failed"
+        }
+        return jsonify(response), 400
+    elif success:
+        response = {
+            "message": "deleting a node success"
+        }
+        return jsonify(response), 200
 
 
 @network.route("/balance", methods=["GET"])

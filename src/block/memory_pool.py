@@ -1,64 +1,73 @@
 import json
-import redis 
-from utxo_pool import get_utxo
+import os
+import redis
+import sys
+import logging
+from .utxo_pool import get_utxo
 
-
-HOST = "localhost"
-PORT = 6379
+HOST = os.environ.get("localhost")
+PORT = os.environ.get("port")
 DB = 0
 
-mempool = redis.Redis(host = HOST, 
-                      port = PORT, 
-                      db = DB,
-                      charset = "utf-8", 
-                      decode_responses = True)
+logging.basicConfig(filename="test.log", level=logging.DEBUG, 
+                    format="%(asctime)s:%(levelname)s:%(message)s")
+try:
+    mempool = redis.Redis(host = HOST, 
+                          port = PORT, 
+                          db = DB,
+                          charset = "utf-8", 
+                          decode_responses = True)
+except redis.ConnectionError as e:
+    logging.critical("redis Connection Error")
+    sys.exit(1)
 
-def add_tx(_tx_hash:str, _transaction:str) -> bool:
+def add_tx(tx_hash:str, transaction:str) -> bool:
     try:
-        if mempool.exists(_tx_hash):
+        if mempool.exists(tx_hash):
             return False 
-        success = mempool.set(_tx_hash, _transaction)
+        success = mempool.set(tx_hash, transaction)
     except Exception as e:
-        print(f"Error: {e}")
-        return False
+        logging.error(f"add_tx: {e}")
+        sys.exit(1)
     return success
 
-def get_tx(_tx_hash:str) -> int or str:
+def get_tx(tx_hash:str) -> dict:
     try:
-        data = mempool.get(_tx_hash)
+        data = mempool.get(tx_hash)
     except Exception as e:
-        print(f"Error: {e}")
-        return -1
+        logging.critical(f"get_tx: {e}")
+        sys.exit(1)
     if data is None:
-        return -1
+        return {}
     else:
-        return data
+        return json.loads(data)
 
-def get_all() -> int or list:
+def get_all() -> list:
     tx_list = []
     for tx_hash in mempool.keys():
         try:
-            tx = get_tx(_tx_hash = tx_hash)
-            if tx == -1:
+            tx = get_tx(tx_hash = tx_hash)
+            if bool(tx):
                 raise ValueError("Transaction not found.")
         except Exception as e:
-            print(f"Error: {e}")
-            return -1
+            logging.critical(f"get_all: {e}")
+            sys.exit(1)
         tx_list.append(json.loads(tx))
     return tx_list
     
-def delete(_tx_hash:str) -> bool:
+def delete_tx(tx_hash:str) -> bool:
         try:
-            success = mempool.delete(_tx_hash)
+            success = mempool.delete(tx_hash)
         except Exception as e:
-            print(e)
-            return False
+            logging.critical(f"delete_tx: {e}")
+            sys.exit(1)
         return success
 
 def delete_all() -> bool:
     for tx_hash in mempool.keys():
-        success = delete(_tx_hash = tx_hash)
+        success = delete_tx(tx_hash = tx_hash)
         if not success:
+            logging.error(f"delete_all: {e}")
             return False 
     return True
 
@@ -66,41 +75,42 @@ def get_keys():
     for key in mempool.keys():
         yield key 
 
-def tx_exists(_tx_hash:str) -> bool:
+def tx_exists(tx_hash:str) -> bool:
     try:
-        exist = mempool.exists(_tx_hash)
+        exist = mempool.exists(tx_hash)
     except Exception as e:
-        print(e)
-        return False 
+        logging.error(f"tx_exists: {e}")
+        sys.exit(1)
     return exist
 
-def tx_out_exists(_tx_hash:str, _tx_output_n:int) -> bool:
-    transaction = get_tx(_tx_hash = _tx_hash)
-    if transaction == -1:
-        return -1
-    tx = json.loads(transaction)
+def tx_out_exists(tx_hash:str, tx_output_n:int) -> bool:
+    tx = get_tx(tx_hash = tx_hash)
+    if bool(tx):
+        return False
     vout = tx["vout"]
     try:
-        tx_out = vout[_tx_output_n]
+        tx_out = vout[tx_output_n]
     except IndexError as e:
-        print(e)
+        logging.error(f"tx_out_exists: {e}")
         return False 
-    if tx_out is None:
-        return False
     return True
 
-def tx_in_exists(_address, _tx_hash, _tx_output_n) -> bool:
+def tx_in_exists(address, tx_hash, tx_output_n) -> bool:
+    transaction = get_utxo(address = address, 
+                               tx_hash = tx_hash, 
+                               tx_output_n = tx_output_n)
+    if bool(transaction):
+        return False
     try:
-        transaction = get_utxo(_address = _address, 
-                                _tx_hash = _tx_hash, 
-                                _tx_output_n = _tx_output_n)
-        tx = get_tx(_tx_hash = transaction["tx_hash"])
-        tx = json.loads(tx)
-        vin = tx["vin"]
+        tx = get_tx(tx_hash = transaction["tx_hash"])
+    except logging.error(f"tx_out_exists: {e}"):
         return True
-    except Exception as e:
-        print("Error: {e}")
-        return False 
+
+    try:
+        vin = tx["vin"]
+    except KeyError as e:
+        logging.error(f"tx_out_exists: {e}")
+        return True
 
 
 # BASE_DIR = ""

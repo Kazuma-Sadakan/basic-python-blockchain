@@ -8,6 +8,10 @@ from src.utils.constants import DIFFICULTY
 from src.utils.proof_of_work import ProofOfWork
 from src.utils.utils import double_sha256
 
+def init_blockchain():
+    blockchain = Blockchain()
+    blockchain.save_to_db()
+
 def create_genesis() -> Block:
     block_head = BlockHead(**{'version': 0, 
                             'previous_block_hash': "", 
@@ -16,13 +20,13 @@ def create_genesis() -> Block:
                             'nonce': 0, 
                             'timestamp': 0})
 
-    genesis_block = Block.load({'tx_list': [],
-                                'block_head': block_head}) 
+    genesis_block = Block(tx_list= [],
+                          block_head= block_head) 
     return genesis_block
 
 class Blockchain:
     def __init__(self, chain:List[Block] = None):
-        self.hash_conflicts = False
+        self.has_conflicts = False
         self.chain = [create_genesis()] if chain is None else chain 
         self.height = len(self.chain) - 1 
 
@@ -54,7 +58,7 @@ class Blockchain:
     
     def save_to_db(self):
         with open('blockchain.json', mode = 'w') as f:
-            f.write(json.dumps(self.chain))
+            f.write(self.to_json())
         
     def load_from_db(self):
         with open('blockchain.json', mode = 'r') as f:

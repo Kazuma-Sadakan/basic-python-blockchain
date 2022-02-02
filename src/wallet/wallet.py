@@ -1,5 +1,4 @@
 import binascii
-from copy import deepcopy
 import json
 import os 
 import base64
@@ -17,7 +16,7 @@ import Crypto.Random
 """
 
 class Wallet:
-    def __init__(self, wallet_id, private_key=None):
+    def __init__(self, private_key=None):
         if private_key:
             try:
                 private_key = DSA.import_key(binascii.unhexlify(private_key))
@@ -31,10 +30,8 @@ class Wallet:
         self.public_key = binascii.hexlify(public_key.exportKey(format='DER')).decode("utf-8")
         self.address = self.__generate_wallet_address(self.public_key)
 
-        self.wallet_id = wallet_id
-
     def get(self):
-        return deepcopy({"private_key": self.private_key, "public_key": self.public_key, "address": self.address})
+        return {"private_key": self.private_key, "public_key": self.public_key, "address": self.address}
 
     @staticmethod
     def hash160(public_key):
@@ -54,9 +51,9 @@ class Wallet:
         return binascii.hexlify(base64.b64decode(address.encode("utf-8"))).decode("utf-8")
 
     @staticmethod
-    def generate_signature(_private_key, _data, _public_key):
-        key = DSA.import_key(binascii.unhexlify(_private_key))
-        hash = SHA256.new(f"{_data}\t{_public_key}".encode('utf-8'))
+    def generate_signature(private_key, data, public_key):
+        key = DSA.import_key(binascii.unhexlify(private_key))
+        hash = SHA256.new(f"{data}\t{public_key}".encode('utf-8'))
         signer = DSS.new(key, mode = 'fips-186-3')
         return binascii.hexlify(signer.sign(hash)).decode("utf-8")
 

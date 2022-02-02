@@ -1,6 +1,5 @@
-import hashlib
-import json
 from src.utils.utils import double_sha256
+
 class ProofOfWork:
     def __init__(self):
         pass 
@@ -8,7 +7,7 @@ class ProofOfWork:
     @staticmethod
     def get_nonce(merkle_root_hash, previous_block_hash, difficulty, timestamp):
         nonce = 0
-        block_hash = None 
+        block_hash = ""
         while not block_hash.startswith("0" * difficulty):
             nonce += 1
             data = {

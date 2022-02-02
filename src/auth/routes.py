@@ -15,7 +15,7 @@ URL = f"{HOST}:{PORT}"
 def create_wallet():
     try:
         wallet = Wallet(wallet_id = URL)
-        save_one(wallet.wallet_id, wallet.address)
+        # save_one(wallet.wallet_id, wallet.address)
         response = {
             'public_key': wallet.public_key,
             'private_key': wallet.private_key,
@@ -29,21 +29,33 @@ def create_wallet():
         }
         return jsonify(response), 500
 
-@auth.route("/login", methods=["POST"])
+@auth.route("/wallet/load", methods=["POST"])
 def load_wallet():
     request_data = request.get_json()
+    
     if not request_data:
         response = {
-            "message": "private key is missing"
+            "message": "Data not found"
         }
         return jsonify(response), 500
+
+    elif "private_key" not in request_data:
+        response = {
+            "message": "Private key not found"
+        }
+        return jsonify(response), 400
+
     try:
         wallet = Wallet(wallet_id = URL, private_key = request_data["private_key"])
-        
     except Exception as e:
         print(f"Error: {e}")
+        response = {
+            "message": "The private key does not exist."
+        }
+        return jsonify(response), 400
+
     try:
-        if get_one(wallet.address):
+        if wallet.address:
             response = {
                 'public_key': wallet.public_key,
                 'private_key': wallet.private_key,
@@ -51,6 +63,7 @@ def load_wallet():
             }
             user = User(**wallet.get())
             login_user(user)
+            
             return jsonify(response), 201
     except Exception as e:
         print(f"Error: {e}")
@@ -65,6 +78,6 @@ def load_wallet():
 def logout():
     logout_user()
     response = {
-        "message": "loggedout"
+        "message": "logged out"
     }
     return jsonify(response), 200
