@@ -2,7 +2,7 @@
 This project is a basic blockchain project inspired by bitcoin. 
 The project is mainly to understand the concept and system of blockchain, transaction and cryptography.
 
-### review/regrets
+### review/regret
 - I should've worked on this project in test driven. 
 - I should've been used to git and github before the project.
 - I should've established the development environment with docker. 
