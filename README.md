@@ -1,6 +1,7 @@
 # basic-python-blockchain
 This project is a basic blockchain project inspired by bitcoin. 
 The project is mainly to understand the concept and system of blockchain, transaction and cryptography.
+I used mongodb, redis and sqlite, rather than litedb because of a installation error.
 
 ### review/regret
 - I should've worked on this project in test driven. 
