@@ -1,4 +1,11 @@
 # basic-python-blockchain
+This project is a basic blockchain project inspired by bitcoin. 
+The project is mainly to understand the concept and system of blockchain, transaction and cryptography.
+
+### review/regrets
+- I should've worked on this project in test driven. 
+- I should've been used to git and github before the project.
+- I should've established the development environment with docker. 
 
 ### Main Reference
 [MIT MAS.S62 Cryptocurrency Engineering and Design, Spring 2018](https://ocw.mit.edu/courses/media-arts-and-sciences/mas-s62-cryptocurrency-engineering-and-design-spring-2018/)
