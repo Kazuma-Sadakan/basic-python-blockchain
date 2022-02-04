@@ -7,6 +7,7 @@ I used mongodb, redis and sqlite, rather than litedb because of a installation e
 - I should've worked on this project in test driven. 
 - I should've been used to git and github before the project.
 - I should've established the development environment with docker. 
+- [Rewrite:rewrite-basic-python-blockchain](https://github.com/Kazuma-Sadakan/rewrite-basic-python-blockchain)
 
 ### Main Reference
 [MIT MAS.S62 Cryptocurrency Engineering and Design, Spring 2018](https://ocw.mit.edu/courses/media-arts-and-sciences/mas-s62-cryptocurrency-engineering-and-design-spring-2018/)
